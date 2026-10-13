@@ -28,7 +28,11 @@ def _escape(path):
 
 
 class Operations:
-    """Interface every backend meets: resolve, read_text, write_text, walk, run."""
+    """Interface every backend meets: resolve, read_text, write_text, walk, run.
+
+    Tools call resolve() first and pass its result to read_text/write_text, so
+    the jail runs once per operation (one ssh round trip, not two).
+    """
 
     name = "base"
 
@@ -57,14 +61,13 @@ class LocalOps(Operations):
 
     def read_text(self, path):
         """Return the file as text (UnicodeDecodeError if it is binary)."""
-        with open(self.resolve(path), encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return f.read()
 
     def write_text(self, path, content):
         """Write text, creating parent directories."""
-        full = self.resolve(path)
-        os.makedirs(os.path.dirname(full), exist_ok=True)
-        with open(full, "w", encoding="utf-8", newline="\n") as f:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
             f.write(content)
 
     def walk(self):
@@ -187,15 +190,14 @@ class SSHOps(Operations):
 
     def read_text(self, path):
         """Read a remote file with cat."""
-        out, code = self._ssh(f"cat -- {shlex.quote(self.resolve(path))}")
+        out, code = self._ssh(f"cat -- {shlex.quote(path)}")
         if code != 0:
             raise OSError(out.strip())
         return out
 
     def write_text(self, path, content):
         """Write a remote file; content travels on stdin, never inside the command."""
-        full = self.resolve(path)
-        out, code = self._ssh(f"mkdir -p {shlex.quote(posixpath.dirname(full))} && cat > {shlex.quote(full)}", stdin=content)
+        out, code = self._ssh(f"mkdir -p {shlex.quote(posixpath.dirname(path))} && cat > {shlex.quote(path)}", stdin=content)
         if code != 0:
             raise OSError(out.strip())
 
