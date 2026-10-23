@@ -20,10 +20,15 @@ def run_tool(tools, call):
         return f"ERROR: {type(e).__name__}: {e}"
 
 
-def run_loop(model, system, messages, tools, on_event, max_turns=80):
+def run_loop(model, system, messages, tools, on_event, max_turns=80, before_turn=None):
     """Drive the model/tool cycle until it answers in plain text; return that text."""
     specs = [t.spec for t in tools.values()]
     for _ in range(max_turns):
+        if before_turn:  # context socket: may fold old messages; replaced IN PLACE so the caller sees it
+            try:
+                messages[:] = before_turn(messages)
+            except Exception as e:  # a broken compactor must never kill the run
+                print(f"before_turn failed ({type(e).__name__}: {e}); continuing unchanged")
         reply = provider.complete(model, system, messages, specs)
         assistant = {"role": "assistant", "text": reply["text"], "tool_calls": reply["tool_calls"]}
         messages.append(assistant)
